@@ -219,7 +219,7 @@
 
 #include "framebuffer.h"
 
-uint16_t __default__mapping(uint16_t pos)
+static uint16_t __default__mapping(uint16_t pos)
 {
     return pos;
 }
@@ -229,7 +229,7 @@ typedef union
     uint32_t shorts[16 * 2];
 } Lines;
 
-uint8_t signalsID[16]={
+static uint8_t signalsID[16]={
 LCD_DATA_OUT0_IDX,
 LCD_DATA_OUT1_IDX,
 LCD_DATA_OUT2_IDX,
@@ -248,7 +248,7 @@ LCD_DATA_OUT14_IDX,
 LCD_DATA_OUT15_IDX,
 
 };
-gdma_channel_handle_t dma_chan;
+static gdma_channel_handle_t dma_chan;
 
 class I2SClocklessVirtualLedDriveresp32s3;
 struct OffsetDisplay
@@ -305,7 +305,7 @@ static void  transposeAll(I2SClocklessVirtualLedDriveresp32s3 *driver);
 static TaskHandle_t I2SClocklessVirtualLedDriveresp32s3_dispTaskHandle = 0;
 static TaskHandle_t I2SClocklessVirtualLedDriveresp32s3_returnTaskHandle = 0;
 static void showPixelsTask(void *pvParameters);
-int interruptSource;
+static int interruptSource;
 
 enum colorarrangment
 {
@@ -326,12 +326,12 @@ enum displayMode
     LOOP_INTERUPT,
 };
 
-__OffsetDisplay _internalOffsetDisplay;
+static __OffsetDisplay _internalOffsetDisplay;
 
 
 
 typedef  dma_descriptor_t I2SClocklessVirtualLedDriveresp32s3DMABuffer;
-I2SClocklessVirtualLedDriveresp32s3DMABuffer * DMABuffersTampon[__NB_DMA_BUFFER];
+static I2SClocklessVirtualLedDriveresp32s3DMABuffer * DMABuffersTampon[__NB_DMA_BUFFER];
 class I2SClocklessVirtualLedDriveresp32s3
 {
 
