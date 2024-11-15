@@ -36,13 +36,13 @@
 #endif
 #ifdef OVERCLOCK_1_1MHZ
 #define CLOCK_DIV_NUM 4
-#define CLOCK_DIV_A 6
-#define CLOCK_DIV_A 4
+#define CLOCK_DIV_A 2
+#define CLOCK_DIV_A 1
 #endif
 #ifndef CLOCK_DIV_NUM
 #define CLOCK_DIV_NUM 6
-#define CLOCK_DIV_A 1
-#define CLOCK_DIV_B 0
+#define CLOCK_DIV_A 3
+#define CLOCK_DIV_B 2
 #endif
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
@@ -156,7 +156,7 @@
 
 #define WS2812_DMA_DESCRIPTOR_BUFFER_MAX_SIZE (576*2)
 #ifndef __NB_DMA_BUFFER
-#define __NB_DMA_BUFFER (NUM_LEDS_PER_STRIP +2)
+#define __NB_DMA_BUFFER 10
 #endif
 
 #ifndef __MAX_BRIGTHNESS
@@ -331,7 +331,7 @@ static __OffsetDisplay _internalOffsetDisplay;
 
 
 typedef  dma_descriptor_t I2SClocklessVirtualLedDriveresp32s3DMABuffer;
-static I2SClocklessVirtualLedDriveresp32s3DMABuffer * DMABuffersTampon[__NB_DMA_BUFFER];
+static I2SClocklessVirtualLedDriveresp32s3DMABuffer * DMABuffersTampon[__NB_DMA_BUFFER+1];
 class I2SClocklessVirtualLedDriveresp32s3
 {
 
@@ -592,16 +592,17 @@ gdma_channel_alloc_config_t dma_chan_config = {
         .owner_check = false,
         .auto_update_desc = false};
     gdma_apply_strategy(dma_chan, &strategy_config);
+    /*
     gdma_transfer_ability_t ability = {
         .psram_trans_align = 64,
         //.sram_trans_align = 64,
     };
     gdma_set_transfer_ability(dma_chan, &ability);
-
+*/
     // Enable DMA transfer callback
     gdma_tx_event_callbacks_t tx_cbs = {
         .on_trans_eof = dma_callback};
-    gdma_register_tx_event_callbacks(dma_chan, &tx_cbs, NULL);
+    gdma_register_tx_event_callbacks(dma_chan, &tx_cbs, this);
     LCD_CAM.lcd_user.lcd_start=0;
 
         if (I2SClocklessVirtualLedDriveresp32s3_sem == NULL)
@@ -621,11 +622,11 @@ gdma_channel_alloc_config_t dma_chan_config = {
 
     void initDMABuffers()
     {
-        printf ("creation of %d \n",__NB_DMA_BUFFER);
-        for (int num_buff = 0; num_buff < __NB_DMA_BUFFER; num_buff++)
+        printf ("creation of %d \n",__NB_DMA_BUFFER+1);
+        for (int num_buff = 0; num_buff < __NB_DMA_BUFFER+1; num_buff++)
         {
             DMABuffersTampon[num_buff] = allocateDMABuffer();
-            if(num_buff==__NB_DMA_BUFFER-1)
+            if(num_buff>0)
 {
                 DMABuffersTampon[num_buff]->dw0.suc_eof = 1;
 }
@@ -636,16 +637,17 @@ else
     if(num_buff>0)
  {
     DMABuffersTampon[num_buff-1]->next = DMABuffersTampon[num_buff];
- }
-           // putdefaultlatch((uint16_t *)DMABuffersTampon[num_buff]->buffer);
-        } // the buffers for the
-
-        for (int num_buff = 1; num_buff < __NB_DMA_BUFFER-1; num_buff++)
-        {
-             putdefaultlatch((uint16_t *)DMABuffersTampon[num_buff]->buffer);
+     putdefaultlatch((uint16_t *)DMABuffersTampon[num_buff]->buffer);
             putdefaultones((uint16_t *)DMABuffersTampon[num_buff]->buffer);
+ }
+ putdefaultlatch((uint16_t *)DMABuffersTampon[0]->buffer);
         }
-         putdefaultlatch((uint16_t *)DMABuffersTampon[__NB_DMA_BUFFER-1]->buffer);
+DMABuffersTampon[__NB_DMA_BUFFER]->next = DMABuffersTampon[1];
+           // putdefaultlatch((uint16_t *)DMABuffersTampon[num_buff]->buffer);
+         // the buffers for the
+
+        
+        // putdefaultlatch((uint16_t *)DMABuffersTampon[__NB_DMA_BUFFER-1]->buffer);
     }
 
     void setPixel(uint32_t pos, uint8_t red, uint8_t green, uint8_t blue, uint8_t white)
@@ -700,12 +702,7 @@ else
 
     void waitDisplay()
     {
-                 while (LCD_CAM.lcd_user.lcd_start)
-        {
-         // yield();
-        }
-         isDisplaying = true;
-        return;
+
         if (isDisplaying == true)
         {
             wasWaitingtofinish = true;
@@ -1087,15 +1084,25 @@ else
         }
 #endif
 
-        transpose = true;
+        //transpose = true;
         
         dmaBufferActive = 0;
         // loadAndTranspose(leds, _offsetDisplay, (uint16_t *)DMABuffersTampon[0]->buffer, ledToDisplay, __green_map, __red_map, __blue_map, __white_map, r_map, g_map, b_map);
         ledToDisplay = 0;
         
-       loadAndTranspose(this);
+       //loadAndTranspose(this);
         //__displayMode=dispmode;
+        gdma_reset(dma_chan);  
 
+        while( LCD_CAM.lcd_user.lcd_start)
+        {}
+for(int i=0;i<__NB_DMA_BUFFER;i++)
+{
+   ledToDisplay = i;
+ dmaBufferActive = i;
+
+  loadAndTranspose(this);
+}
         isDisplaying = true;
         /*
         for(int i=0;i<NUM_LEDS_PER_STRIP+10;i++)
@@ -1105,29 +1112,32 @@ else
                 ledToDisplay_inbufferfor[i]=0;
         }*/
         ledToDisplay_out = 0;
+    ledToDisplay = __NB_DMA_BUFFER-2;
+ dmaBufferActive = __NB_DMA_BUFFER-2;
 
-        gdma_reset(dma_chan);                 // Reset DMA to known state
+       // gdma_reset(dma_chan);                 // Reset DMA to known state
     LCD_CAM.lcd_user.lcd_dout = 1;        // Enable data out
     LCD_CAM.lcd_user.lcd_update = 1;      // Update registers
     LCD_CAM.lcd_misc.lcd_afifo_reset = 1;
+    memset(DMABuffersTampon[0]->buffer,0,WS2812_DMA_DESCRIPTOR_BUFFER_MAX_SIZE);
     gdma_start(dma_chan, (intptr_t)DMABuffersTampon[0]); // Start DMA w/updated descriptor(s)
-    vTaskDelay(1);                         // Must 'bake' a moment before...
+    //vTaskDelay(1);                         // Must 'bake' a moment before...
     LCD_CAM.lcd_user.lcd_start = 1;        // Trigger LCD DMA transfer
-    transposeAll(this);
-    /*
+  /// vTaskDelay(12);
+    
         if (__displayMode == WAIT)
         {
             isWaiting = true;
-            if (I2SClocklessVirtualLedDriveresp32s3_sem == NULL)
-                I2SClocklessVirtualLedDriveresp32s3_sem = xSemaphoreCreateBinary();
-            xSemaphoreTake(I2SClocklessVirtualLedDriveresp32s3_sem, portMAX_DELAY);
+            if (I2SClocklessVirtualLedDriveresp32s3_waitDisp == NULL)
+                I2SClocklessVirtualLedDriveresp32s3_waitDisp = xSemaphoreCreateBinary();
+            xSemaphoreTake(I2SClocklessVirtualLedDriveresp32s3_waitDisp, portMAX_DELAY);
         }
         else
-        {*/
+        {
             isWaiting = true;
             // isDisplaying = true;
-       // }
-       
+       }
+      
 
 // vTaskDelay(1/portTICK_PERIOD_MS);
 // delay(1);
@@ -1281,7 +1291,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
         uint16_t offset2 = 0;
         for (uint16_t leddisp = 0; leddisp < NUM_LEDS_PER_STRIP; leddisp++)
         {
-            uint16_t led_tmp = NUM_LEDS_PER_STRIP + leddisp;
+            uint16_t led_tmp = leddisp;
 
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
@@ -1294,7 +1304,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
                 led_tmp += I2S_OFF_MAP;
                 offset2++;
             }
-            led_tmp -= I2S_OFF3_MAP;
+            led_tmp -= I2S_OFF2_MAP;
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
 #if (I2S_MAPPING_MODE & (I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_SOFTWARE | I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_IN_MEMORY)) > 0
@@ -1305,7 +1315,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
                 led_tmp += I2S_OFF_MAP;
                 offset2++;
             }
-            led_tmp -= I2S_OFF4_MAP;
+            led_tmp -= I2S_OFF2_MAP;
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
 #if (I2S_MAPPING_MODE & (I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_SOFTWARE | I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_IN_MEMORY)) > 0
@@ -1316,7 +1326,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
                 led_tmp += I2S_OFF_MAP;
                 offset2++;
             }
-            led_tmp -= I2S_OFF3_MAP;
+            led_tmp -= I2S_OFF2_MAP;
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
 #if (I2S_MAPPING_MODE & (I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_SOFTWARE | I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_IN_MEMORY)) > 0
@@ -1327,7 +1337,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
                 led_tmp += I2S_OFF_MAP;
                 offset2++;
             }
-            led_tmp -= I2S_OFF4_MAP;
+            led_tmp -= I2S_OFF2_MAP;
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
 #if (I2S_MAPPING_MODE & (I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_SOFTWARE | I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_IN_MEMORY)) > 0
@@ -1338,7 +1348,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
                 led_tmp += I2S_OFF_MAP;
                 offset2++;
             }
-            led_tmp -= I2S_OFF3_MAP;
+            led_tmp -= I2S_OFF2_MAP;
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
 #if (I2S_MAPPING_MODE & (I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_SOFTWARE | I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_IN_MEMORY)) > 0
@@ -1349,7 +1359,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
                 led_tmp += I2S_OFF_MAP;
                 offset2++;
             }
-            led_tmp -= I2S_OFF4_MAP;
+            led_tmp -= I2S_OFF2_MAP;
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
 #if (I2S_MAPPING_MODE & (I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_SOFTWARE | I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_IN_MEMORY)) > 0
@@ -1360,7 +1370,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
                 led_tmp += I2S_OFF_MAP;
                 offset2++;
             }
-            led_tmp -= I2S_OFF3_MAP;
+            led_tmp -= I2S_OFF2_MAP;
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
 #if (I2S_MAPPING_MODE & (I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_SOFTWARE | I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_IN_MEMORY)) > 0
@@ -1400,7 +1410,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
         _hmapoff = &val;
         for (uint16_t leddisp = 0; leddisp < NUM_LEDS_PER_STRIP; leddisp++)
         {
-            uint16_t led_tmp = NUM_LEDS_PER_STRIP + leddisp;
+            uint16_t led_tmp =  leddisp;
 
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
@@ -1411,7 +1421,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
                 led_tmp += I2S_OFF_MAP;
                 offset2++;
             }
-            led_tmp -= I2S_OFF3_MAP;
+            led_tmp -= I2S_OFF2_MAP;
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
 
@@ -1420,7 +1430,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
                 led_tmp += I2S_OFF_MAP;
                 offset2++;
             }
-            led_tmp -= I2S_OFF4_MAP;
+            led_tmp -= I2S_OFF2_MAP;
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
 
@@ -1429,7 +1439,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
                 led_tmp += I2S_OFF_MAP;
                 offset2++;
             }
-            led_tmp -= I2S_OFF3_MAP;
+            led_tmp -= I2S_OFF2_MAP;
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
 
@@ -1438,7 +1448,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
                 led_tmp += I2S_OFF_MAP;
                 offset2++;
             }
-            led_tmp -= I2S_OFF4_MAP;
+            led_tmp -= I2S_OFF2_MAP;
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
 
@@ -1447,7 +1457,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
                 led_tmp += I2S_OFF_MAP;
                 offset2++;
             }
-            led_tmp -= I2S_OFF3_MAP;
+            led_tmp -= I2S_OFF2_MAP;
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
 
@@ -1456,7 +1466,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
                 led_tmp += I2S_OFF_MAP;
                 offset2++;
             }
-            led_tmp -= I2S_OFF4_MAP;
+            led_tmp -= I2S_OFF2_MAP;
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
 
@@ -1465,7 +1475,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
                 led_tmp += I2S_OFF_MAP;
                 offset2++;
             }
-            led_tmp -= I2S_OFF3_MAP;
+            led_tmp -= I2S_OFF2_MAP;
             for (uint16_t i = 0; i < NBIS2SERIALPINS; i++)
             {
 
@@ -1621,8 +1631,8 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
 #if (I2S_MAPPING_MODE & I2S_MAPPING_MODE_OPTION_MAPPING_IN_MEMORY) > 0
 
         ESP_LOGD(TAG, "creating map array");
-        _defaulthmap = (uint16_t *)malloc(NUM_LEDS_PER_STRIP * NBIS2SERIALPINS * 8 * 2 + 2);
-        // _defaulthmap = (uint16_t *) heap_caps_malloc(NUM_LEDS_PER_STRIP * NBIS2SERIALPINS * 8 * 2 + 2,MALLOC_CAP_INTERNAL);
+      // _defaulthmap = (uint16_t *)malloc(NUM_LEDS_PER_STRIP * NBIS2SERIALPINS * 8 * 2 + 2);
+         _defaulthmap = (uint16_t *) heap_caps_malloc(NUM_LEDS_PER_STRIP * NBIS2SERIALPINS * 8 * 2 + 2,MALLOC_CAP_INTERNAL);
         if (!_defaulthmap)
         {
             Serial.printf("no memory\n");
@@ -1676,7 +1686,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
         initled(framb->frames[0], Pinsq, clock_pin, latch_pin);
     }
     // private:
-    volatile int dmaBufferActive = 0;
+     uint16_t dmaBufferActive = 0;
     volatile bool wait;
     displayMode __displayMode, __defaultDisplayMode;
     volatile int ledToDisplay;
@@ -1706,7 +1716,7 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
             return NULL;
         }
  b->dw0.owner = DMA_DESCRIPTOR_BUFFER_OWNER_DMA;
-        b->buffer = (uint8_t *)heap_caps_aligned_calloc(64,1,WS2812_DMA_DESCRIPTOR_BUFFER_MAX_SIZE,  MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        b->buffer = (uint8_t *)heap_caps_malloc(WS2812_DMA_DESCRIPTOR_BUFFER_MAX_SIZE,  MALLOC_CAP_DMA);
         if (!b->buffer)
         {
             ESP_LOGE(TAG, "No more memory\n");
@@ -1720,7 +1730,8 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
         return b;
     }
 
-    
+   
+
     /*
         static void IRAM_ATTR i2sStop(I2SClocklessVirtualLedDriveresp32s3 *cont)
         {
@@ -1834,6 +1845,16 @@ Driver data (overall frames):\n     - nb of frames displayed:%d\n     - nb of fr
     // static void IRAM_ATTR interruptHandler(void *arg);
 };
 
+static void IRAM_ATTR i2Stop(I2SClocklessVirtualLedDriveresp32s3 *cont)
+    {
+       while (LCD_CAM.lcd_user.lcd_start){}
+        xSemaphoreGive(cont->I2SClocklessVirtualLedDriveresp32s3_waitDisp);
+        cont->isDisplaying=false;
+            gdma_reset(dma_chan); 
+              LCD_CAM.lcd_misc.lcd_afifo_reset = 1;
+            //return true;
+    }
+/*
 static void IRAM_ATTR i2sStop(I2SClocklessVirtualLedDriveresp32s3 *cont)
 {
 
@@ -1862,10 +1883,10 @@ static void IRAM_ATTR i2sStop(I2SClocklessVirtualLedDriveresp32s3 *cont)
         // printf("on debloqu\n");
         xSemaphoreGive(cont->I2SClocklessVirtualLedDriveresp32s3_sem);
     }
-    */
+    
     // printf("hehe\n");
 }
-
+*/
 static void IRAM_ATTR _I2SClocklessVirtualLedDriveresp32s3interruptHandler(void *arg)
 {
 /*
@@ -3124,7 +3145,7 @@ static inline __attribute__((always_inline)) void IRAM_ATTR loadAndTranspose(I2S
     driver->_times[driver->ledToDisplay] = ESP.getCycleCount();
 #endif
     uint8_t *ledt = driver->leds;
-    uint16_t *buff = (uint16_t *)DMABuffersTampon[driver->ledToDisplay+1]->buffer;
+    uint16_t *buff = (uint16_t *)DMABuffersTampon[driver->dmaBufferActive+1]->buffer;
 #if ((I2S_MAPPING_MODE & 0xFFF) == I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_SOFTWARE_SOFTWARE) or ((I2S_MAPPING_MODE & 0xFFF) == I2S_MAPPING_MODE_OPTION_MAPPING_SOFTWARE) or ((I2S_MAPPING_MODE & 0xFFF) == I2S_MAPPING_MODE_OPTION_NONE)
     int ledtodisp = driver->ledToDisplay;
 #endif
@@ -3180,7 +3201,7 @@ static inline __attribute__((always_inline)) void IRAM_ATTR loadAndTranspose(I2S
         poli = _poli;
 #endif
 #if (I2S_MAPPING_MODE & (I2S_MAPPING_MODE_OPTION_MAPPING_IN_MEMORY | I2S_MAPPING_MODE_OPTION_SCROLL_MAPPING_IN_MEMORY)) > 0
-        int pin = (pin74HC595 ^1) << 4;
+        int pin = (pin74HC595) << 4;
 #else
         int pin = (pin74HC595) << 4;
 #endif
@@ -3296,7 +3317,7 @@ static inline __attribute__((always_inline)) void IRAM_ATTR loadAndTranspose(I2S
 #endif
     // int led_tmp;
     // uint8_t *ledt = driver->leds;
-    uint16_t *buff = (uint16_t *)DMABuffersTampon[driver->ledToDisplay]->buffer;
+    uint16_t *buff = (uint16_t *)DMABuffersTampon[driver->dmaBufferActive+1]->buffer;
     int ledtodisp = driver->ledToDisplay;
 #ifndef __HARDWARE_BRIGHTNESS
     uint8_t *mapg = driver->__green_map;
@@ -3401,7 +3422,22 @@ static IRAM_ATTR bool dma_callback(gdma_channel_handle_t dma_chan,
     // clear the lcd_start flag anyway -- we poll it in loop() to decide when
     // the transfer has finished, and the same flag is set later to trigger
     // the next transfer.
-    LCD_CAM.lcd_user.lcd_start = 0;
+    I2SClocklessVirtualLedDriveresp32s3 *cont = (I2SClocklessVirtualLedDriveresp32s3 *)user_data;
+   
+    if(cont->ledToDisplay<NUM_LEDS_PER_STRIP)
+    {
+        loadAndTranspose(cont);
+       cont->dmaBufferActive=(cont->dmaBufferActive+1)%__NB_DMA_BUFFER;
+       
+    }
+     //cont->dmaBufferActive=(cont->dmaBufferActive+1)%__NB_DMA_BUFFER;
+     cont->ledToDisplay= cont->ledToDisplay+1;
+    if( cont->ledToDisplay>=NUM_LEDS_PER_STRIP+__NB_DMA_BUFFER+2)
+     {
+      LCD_CAM.lcd_user.lcd_start = 0;
+                      i2Stop(cont);
+     }
+   // LCD_CAM.lcd_user.lcd_start = 0;
     return true;
 }
 
